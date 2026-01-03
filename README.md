@@ -23,3 +23,8 @@ Mapping individual trees in a forest is time-consuming and can bloat the OSM dat
 3. **Calibrate** by dragging from one side of a tree crown to the other.
 4. **Count** by using `Shift+Click` on individuals inside the box.
 5. **Finish** by pressing `Enter` to apply tags to the main polygon.
+
+### Requirements
+1. **JOSM** (Tested on v19439)
+2. **Scripting Plugin** (Tested on v0.3.5)
+3. **Jython Standalone** (Available via [Gubaer's GitHub](https://github.com/Gubaer/josm-scripting-plugin/releases))
