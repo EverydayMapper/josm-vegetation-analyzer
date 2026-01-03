@@ -1,13 +1,18 @@
 # ==============================================================================
-# JOSM Vegetation Analyzer
-# Version: 1.0.0 (Release)
-# Date: 2026-01-03
+# Tree Density Estimator
+# Version: 1.1.0
+# Date: 2026-01-04
 # Author: EverydayMapper (OSM)
 # License: MIT
 # 
 # Description:
-# A statistical tool for JOSM to estimate vegetation density, canopy cover, 
-# and plant spacing by sampling satellite imagery.
+# A statistical sampling tool for JOSM to estimate tree/scrub density, canopy 
+# cover, and stem counts. Supports both Closed Ways and Multipolygon Relations.
+#
+# Methodology:
+# Uses human-guided sampling and mathematical extrapolation. 
+# Density is calculated as: $\text{count} / \text{sample\_area}$
+# Mean Inter-Tree Distance (d) is calculated as: $d = \sqrt{\frac{1}{\text{density}}}$
 # ==============================================================================
 
 import math
