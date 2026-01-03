@@ -14,7 +14,7 @@ Mapping individual trees in a forest is time-consuming and can bloat the OSM dat
 ## Installation
 1. Install the **Scripting** plugin in JOSM.
 2. Ensure you have a Python engine configured (e.g., Jython or a local Python install).
-3. Download `vegetation_analyzer.py` from the `/scripts` folder in this repo.
+3. Download `tree_density_estimator.py` from the `/scripts` folder in this repo.
 4. Open the Scripting console in JOSM and run the file.
 
 ## How to Use
