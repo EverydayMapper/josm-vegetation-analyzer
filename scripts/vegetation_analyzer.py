@@ -1,3 +1,15 @@
+# ==============================================================================
+# JOSM Vegetation Analyzer
+# Version: 1.0.0 (Release)
+# Date: 2026-01-03
+# Author: EverydayMapper (OSM)
+# License: MIT
+# 
+# Description:
+# A statistical tool for JOSM to estimate vegetation density, canopy cover, 
+# and plant spacing by sampling satellite imagery.
+# ==============================================================================
+
 import math
 from threading import Thread
 from org.openstreetmap.josm.gui import MainApplication
@@ -9,7 +21,7 @@ from java.awt.geom import Path2D
 from javax.swing import JOptionPane, SwingUtilities
 
 def run_analyzer():
-    # 1. Start with Disclaimer
+    # --- 1. SETUP & VALIDATION ---
     disclaimer = ("PRECISION & SOURCE NOTICE:\n"
                   "- Best for 'Open' or 'Scattered' vegetation.\n"
                   "- Shift+Click to count (prevents accidental selection).\n"
@@ -30,7 +42,7 @@ def run_analyzer():
         JOptionPane.showMessageDialog(None, "Invalid area geometry.")
         return
 
-    # 2. Metadata & Imagery Source
+    # --- 2. IMAGERY METADATA ---
     active_layer_name = "Imagery"
     for l in MainApplication.getLayerManager().getLayers():
         if "Imagery" in l.getName() or "Satellite" in l.getName():
@@ -45,6 +57,7 @@ def run_analyzer():
     else:
         imagery_source = "{}; visual_sample_extrapolation".format(active_layer_name)
 
+    # --- 3. VEGETATION TYPE SELECTION ---
     options = ["Trees", "Bushes", "Heathland Plants"]
     choice = JOptionPane.showOptionDialog(None, "What are you counting?", "Vegetation Type",
                                         JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE,
@@ -52,6 +65,7 @@ def run_analyzer():
     if choice == -1: return
     singular, plural, tag_suffix = ("Tree", "Trees", "crown") if choice == 0 else ("Bush", "Bushes", "shrub") if choice == 1 else ("Plant", "Plants", "shrub")
 
+    # --- 4. SAMPLING INTERFACE ---
     class PrecisionSampler(MouseListener, KeyListener):
         def __init__(self):
             self.step = "DRAW_BOX"
@@ -71,6 +85,7 @@ def run_analyzer():
 
         def mousePressed(self, e):
             mv = MainApplication.getMap().mapView
+            # Use normal click for box/diameter, Shift+Click for tree nodes
             if not e.isShiftDown(): self.start_p = mv.getLatLon(e.getX(), e.getY())
 
         def mouseReleased(self, e):
@@ -78,6 +93,7 @@ def run_analyzer():
             if not self.start_p: return
             end_p = mv.getLatLon(e.getX(), e.getY())
             
+            # Step A: Define the Sample Box
             if self.step == "DRAW_BOX":
                 dist = self.start_p.greatCircleDistance(end_p)
                 if dist < 1.0: return 
@@ -91,7 +107,6 @@ def run_analyzer():
                 poly.moveTo(n1.coor.lat(), n1.coor.lon()); poly.lineTo(n2.coor.lat(), n2.coor.lon()); poly.lineTo(n3.coor.lat(), n3.coor.lon()); poly.lineTo(n4.coor.lat(), n4.coor.lon()); poly.closePath()
                 self.sample_poly = poly
                 
-                # IMPROVED PROMPT
                 msg = ("Sample Area: {:.1f} m2\n\n"
                        "CALIBRATION STEP:\n"
                        "Drag your mouse from one side of a {} to the other to measure its diameter.\n"
@@ -102,6 +117,7 @@ def run_analyzer():
                 self.start_p = None
                 self.update_status("Drag across a {} crown, then ENTER.".format(singular))
 
+            # Step B: Calibrate Diameter
             elif self.step == "CALIBRATE":
                 dist = self.start_p.greatCircleDistance(end_p)
                 if dist > 0.05:
@@ -114,6 +130,7 @@ def run_analyzer():
                 self.start_p = None
 
         def mouseClicked(self, e):
+            # Step C: Count individuals using Shift+Click
             if self.step == "COUNTING" and e.isShiftDown():
                 mv = MainApplication.getMap().mapView
                 click_ll = mv.getLatLon(e.getX(), e.getY())
@@ -122,6 +139,7 @@ def run_analyzer():
                     self.update_status("{} Counted: {} | ENTER to finish".format(plural, len(self.tree_nodes)))
 
         def keyPressed(self, e):
+            # ENTER key to advance steps
             if e.getKeyCode() == 10: 
                 if self.step == "CALIBRATE" and self.diameters:
                     self.avg_diameter = sum(self.diameters) / len(self.diameters)
@@ -130,6 +148,7 @@ def run_analyzer():
                     self.update_status("SHIFT+CLICK to count {} inside the box.".format(plural))
                     JOptionPane.showMessageDialog(None, "Calibration Done: {:.2f}m\n\nNow SHIFT+CLICK every {} inside the sample box.".format(self.avg_diameter, singular))
                 elif self.step == "COUNTING": self.finished = True
+            # DELETE/BACKSPACE to undo
             elif e.getKeyCode() in [8, 127]: 
                 if self.step == "CALIBRATE" and self.diameters:
                     self.diameters.pop(); line, n1, n2 = self.temp_lines.pop()
@@ -141,10 +160,12 @@ def run_analyzer():
         def keyReleased(self, e): pass
         def keyTyped(self, e): pass
 
+    # Initialize tool
     JOptionPane.showMessageDialog(None, "STEP 1: Draw your sample box area on the map.")
     tool = PrecisionSampler(); view = MainApplication.getMap().mapView
     view.addMouseListener(tool); view.addKeyListener(tool); view.requestFocusInWindow()
 
+    # --- 5. DATA FINALIZATION ---
     def monitor():
         import time
         while not tool.finished: time.sleep(0.1)
@@ -159,10 +180,12 @@ def run_analyzer():
                     est_total = int(density_ratio * total_area)
                     avg_spacing = math.sqrt(1.0 / density_ratio)
                     
+                    # Canopy rounded to 5% increments for ecological mapping
                     canopy_pc = int(round(((est_total * indiv_area) / total_area) * 100 / 5.0) * 5)
                     canopy_pc = max(0, min(100, canopy_pc))
                     density_class = "very_dense" if canopy_pc >= 70 else "dense" if canopy_pc >= 40 else "open" if canopy_pc >= 10 else "scattered"
                     
+                    # Write tags to the selected OSM object
                     target.put("wood:density", density_class)
                     target.put("canopy", str(canopy_pc) + "%")
                     target.put("est:stem_count", str(est_total))
@@ -177,6 +200,8 @@ def run_analyzer():
                                "Est. Total: {}\n"
                                "Canopy Cover: {}%").format(tool.avg_diameter, avg_spacing, est_total, canopy_pc)
                     JOptionPane.showMessageDialog(None, summary)
+                
+                # Cleanup temporary sampling artifacts
                 for n in tool.tree_nodes: layer.data.removePrimitive(n)
                 if tool.sample_way:
                     nodes = tool.sample_way.getNodes()
