@@ -1,18 +1,19 @@
 # ==============================================================================
 # Tree Density Estimator
-# Version: 1.1.0
+# Version: 1.2.1
 # Date: 2026-01-04
 # Author: EverydayMapper (OSM)
 # License: MIT
 # 
 # Description:
-# A statistical sampling tool for JOSM to estimate tree/scrub density, canopy 
-# cover, and stem counts. Supports both Closed Ways and Multipolygon Relations.
+# A statistical sampling tool for JOSM to estimate tree/scrub density and canopy 
+# cover. Supports Closed Ways and Multipolygon Relations.
 #
-# Methodology:
-# Uses human-guided sampling and mathematical extrapolation. 
-# Density is calculated as: $\text{count} / \text{sample\_area}$
-# Mean Inter-Tree Distance (d) is calculated as: $d = \sqrt{\frac{1}{\text{density}}}$
+# NEW IN V1.2.1:
+# - Improved Source Detection: Correctly identifies Bing, Mapbox, and local 
+#   layers by checking visibility rather than keyword filters.
+# - Metadata: Standardized 'source' tag: [Imagery] ([Date]); tree_density_estimator
+# - Integrity: Added 'est:source_area' to help detect geometry-related bias.
 # ==============================================================================
 
 import math
@@ -21,16 +22,17 @@ from org.openstreetmap.josm.gui import MainApplication
 from org.openstreetmap.josm.data.osm import Node, Way
 from org.openstreetmap.josm.tools import Geometry
 from org.openstreetmap.josm.data.coor import LatLon
+from org.openstreetmap.josm.gui.layer import OsmDataLayer
 from java.awt.event import MouseListener, KeyListener
 from java.awt.geom import Path2D 
 from javax.swing import JOptionPane, SwingUtilities
 
 def run_analyzer():
-    # --- 1. SETUP & VALIDATION ---
+    # 1. Start with Disclaimer
     disclaimer = ("PRECISION & SOURCE NOTICE:\n"
                   "- Best for 'Open' or 'Scattered' vegetation.\n"
                   "- Shift+Click to count (prevents accidental selection).\n"
-                  "- Check imagery dates (Wayback) for accuracy!")
+                  "- Please verify imagery dates for accuracy!")
     JOptionPane.showMessageDialog(None, disclaimer, "Tool Disclaimer", JOptionPane.WARNING_MESSAGE)
 
     layer = MainApplication.getLayerManager().getEditLayer()
@@ -47,30 +49,47 @@ def run_analyzer():
         JOptionPane.showMessageDialog(None, "Invalid area geometry.")
         return
 
-    # --- 2. IMAGERY METADATA ---
+    # 2. Metadata & Imagery Source (FIXED V1.2.1)
+    # We default to "Imagery" only if nothing else is found.
     active_layer_name = "Imagery"
+    
+    # Iterate through all layers to find the visible background (non-data) layer
     for l in MainApplication.getLayerManager().getLayers():
-        if "Imagery" in l.getName() or "Satellite" in l.getName():
+        # Skip the layer we are currently editing (Data Layer)
+        if isinstance(l, OsmDataLayer):
+            continue
+        # If the layer is visible, we assume it is the source
+        if l.isVisible():
             active_layer_name = l.getName()
-            break
+            # We don't break here; if multiple are visible, usually the top-most 
+            # (last in list) is the one the user sees.
             
-    img_date = JOptionPane.showInputDialog(None, "Enter Imagery Date from Wayback (Optional):", 
+    # Updated Date Prompt Logic
+    date_prompt_msg = ("Date of Imagery (Optional)\n\n"
+                       "Enter the capture date (YYYY-MM-DD) if known.\n"
+                       "Leave blank if unknown.\n\n"
+                       "Click OK to continue or Cancel to exit script.")
+    
+    img_date = JOptionPane.showInputDialog(None, date_prompt_msg, 
                                            "Imagery Metadata", JOptionPane.QUESTION_MESSAGE)
     
+    # Graceful exit if Cancel is clicked
+    if img_date is None:
+        return
+    
+    # Updated Source Tag Standard
     if img_date and img_date.strip():
-        imagery_source = "{} ({}); visual_sample_extrapolation".format(active_layer_name, img_date.strip())
+        imagery_source = "{} ({}); tree_density_estimator".format(active_layer_name, img_date.strip())
     else:
-        imagery_source = "{}; visual_sample_extrapolation".format(active_layer_name)
+        imagery_source = "{}; tree_density_estimator".format(active_layer_name)
 
-    # --- 3. VEGETATION TYPE SELECTION ---
     options = ["Trees", "Bushes", "Heathland Plants"]
     choice = JOptionPane.showOptionDialog(None, "What are you counting?", "Vegetation Type",
-                                        JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE,
-                                        None, options, options[0])
+                                          JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE,
+                                          None, options, options[0])
     if choice == -1: return
     singular, plural, tag_suffix = ("Tree", "Trees", "crown") if choice == 0 else ("Bush", "Bushes", "shrub") if choice == 1 else ("Plant", "Plants", "shrub")
 
-    # --- 4. SAMPLING INTERFACE ---
     class PrecisionSampler(MouseListener, KeyListener):
         def __init__(self):
             self.step = "DRAW_BOX"
@@ -90,7 +109,6 @@ def run_analyzer():
 
         def mousePressed(self, e):
             mv = MainApplication.getMap().mapView
-            # Use normal click for box/diameter, Shift+Click for tree nodes
             if not e.isShiftDown(): self.start_p = mv.getLatLon(e.getX(), e.getY())
 
         def mouseReleased(self, e):
@@ -98,7 +116,6 @@ def run_analyzer():
             if not self.start_p: return
             end_p = mv.getLatLon(e.getX(), e.getY())
             
-            # Step A: Define the Sample Box
             if self.step == "DRAW_BOX":
                 dist = self.start_p.greatCircleDistance(end_p)
                 if dist < 1.0: return 
@@ -122,7 +139,6 @@ def run_analyzer():
                 self.start_p = None
                 self.update_status("Drag across a {} crown, then ENTER.".format(singular))
 
-            # Step B: Calibrate Diameter
             elif self.step == "CALIBRATE":
                 dist = self.start_p.greatCircleDistance(end_p)
                 if dist > 0.05:
@@ -135,7 +151,6 @@ def run_analyzer():
                 self.start_p = None
 
         def mouseClicked(self, e):
-            # Step C: Count individuals using Shift+Click
             if self.step == "COUNTING" and e.isShiftDown():
                 mv = MainApplication.getMap().mapView
                 click_ll = mv.getLatLon(e.getX(), e.getY())
@@ -144,7 +159,6 @@ def run_analyzer():
                     self.update_status("{} Counted: {} | ENTER to finish".format(plural, len(self.tree_nodes)))
 
         def keyPressed(self, e):
-            # ENTER key to advance steps
             if e.getKeyCode() == 10: 
                 if self.step == "CALIBRATE" and self.diameters:
                     self.avg_diameter = sum(self.diameters) / len(self.diameters)
@@ -153,7 +167,6 @@ def run_analyzer():
                     self.update_status("SHIFT+CLICK to count {} inside the box.".format(plural))
                     JOptionPane.showMessageDialog(None, "Calibration Done: {:.2f}m\n\nNow SHIFT+CLICK every {} inside the sample box.".format(self.avg_diameter, singular))
                 elif self.step == "COUNTING": self.finished = True
-            # DELETE/BACKSPACE to undo
             elif e.getKeyCode() in [8, 127]: 
                 if self.step == "CALIBRATE" and self.diameters:
                     self.diameters.pop(); line, n1, n2 = self.temp_lines.pop()
@@ -165,12 +178,10 @@ def run_analyzer():
         def keyReleased(self, e): pass
         def keyTyped(self, e): pass
 
-    # Initialize tool
     JOptionPane.showMessageDialog(None, "STEP 1: Draw your sample box area on the map.")
     tool = PrecisionSampler(); view = MainApplication.getMap().mapView
     view.addMouseListener(tool); view.addKeyListener(tool); view.requestFocusInWindow()
 
-    # --- 5. DATA FINALIZATION ---
     def monitor():
         import time
         while not tool.finished: time.sleep(0.1)
@@ -185,18 +196,30 @@ def run_analyzer():
                     est_total = int(density_ratio * total_area)
                     avg_spacing = math.sqrt(1.0 / density_ratio)
                     
-                    # Canopy rounded to 5% increments for ecological mapping
                     canopy_pc = int(round(((est_total * indiv_area) / total_area) * 100 / 5.0) * 5)
                     canopy_pc = max(0, min(100, canopy_pc))
                     density_class = "very_dense" if canopy_pc >= 70 else "dense" if canopy_pc >= 40 else "open" if canopy_pc >= 10 else "scattered"
                     
-                    # Write tags to the selected OSM object
                     target.put("wood:density", density_class)
                     target.put("canopy", str(canopy_pc) + "%")
                     target.put("est:stem_count", str(est_total))
                     target.put("est:avg_{}".format(tag_suffix), "{:.1f}m".format(tool.avg_diameter))
                     target.put("est:avg_spacing", "{:.1f}m".format(avg_spacing))
+                    
+                    # Added est:source_area in V1.2.1
+                    target.put("est:source_area", str(round(total_area, 1)))
                     target.put("source", imagery_source)
+                    
+                    # Smart Suggestion Logic (scrub <-> wood)
+                    current_tag = target.get("natural")
+                    if density_class in ["dense", "very_dense"] and current_tag == "scrub":
+                        change_msg = "Density is {}%.\nSuggest changing natural=scrub to natural=wood.\n\nProceed?".format(canopy_pc)
+                        if JOptionPane.showConfirmDialog(None, change_msg) == JOptionPane.YES_OPTION:
+                            target.put("natural", "wood")
+                    elif density_class in ["scattered", "open"] and current_tag == "wood":
+                        change_msg = "Density is {}%.\nSuggest changing natural=wood to natural=scrub.\n\nProceed?".format(canopy_pc)
+                        if JOptionPane.showConfirmDialog(None, change_msg) == JOptionPane.YES_OPTION:
+                            target.put("natural", "scrub")
                     
                     summary = ("ANALYSIS COMPLETE\n"
                                "-----------------\n"
@@ -205,8 +228,6 @@ def run_analyzer():
                                "Est. Total: {}\n"
                                "Canopy Cover: {}%").format(tool.avg_diameter, avg_spacing, est_total, canopy_pc)
                     JOptionPane.showMessageDialog(None, summary)
-                
-                # Cleanup temporary sampling artifacts
                 for n in tool.tree_nodes: layer.data.removePrimitive(n)
                 if tool.sample_way:
                     nodes = tool.sample_way.getNodes()
