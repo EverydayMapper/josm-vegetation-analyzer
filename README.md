@@ -1,6 +1,6 @@
 # Tree Density Estimator for JOSM
 
-**Version:** 1.1.0  
+**Version:** 1.2.1  
 **Author:** EverydayMapper  
 **Platform:** macOS 26.2 (Tested), JOSM v19439, Java 21
 
