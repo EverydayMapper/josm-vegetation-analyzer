@@ -53,9 +53,14 @@ This tool is a **proposal for better vegetation mapping**. It is most accurate i
 
 ## Contributing
 
-This is a prerelease version for testing. If you find bugs or have suggestions for the math or workflow:
-1.  Open an **Issue** to report bugs.
-2.  Submit a **Pull Request** for code improvements.
+This script is a functional proposal for moving OSM vegetation mapping beyond binary tags. I welcome feedback, bug reports, and pull requests!
+
+### Known Limitations & Roadmap
+* **Per-Ring Statistics:** Currently, for Multipolygon Relations with multiple 'outer' members, the script calculates a global density for the entire relation. A future goal is to allow per-ring statistical analysis.
+* **Automation:** Exploring the potential for basic computer-vision assisted counting (though human verification remains a priority to avoid "node bombing").
+* **UI Improvements:** Moving from JOSM prompts to a dedicated dockable panel.
+
+If you find a bug or have a suggestion for the mathematical model, please open an **Issue**.
 
 ---
 *Mapping with nuance. Join the effort to move beyond the green blob.*
