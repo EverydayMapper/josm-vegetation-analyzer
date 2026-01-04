@@ -56,9 +56,9 @@ This tool is a **proposal for better vegetation mapping**. It is most accurate i
 This script is a functional proposal for moving OSM vegetation mapping beyond binary tags. I welcome feedback, bug reports, and pull requests!
 
 ### Known Limitations & Roadmap
-* **Per-Ring Statistics:** Currently, for Multipolygon Relations with multiple 'outer' members, the script calculates a global density for the entire relation. A future goal is to allow per-ring statistical analysis.
+* **Per-Ring Statistics:** Currently, for Multipolygon Relations with multiple 'outer' members, the script calculates a global density for the entire relation. For isolated patches with significantly different densities, it is recommended to map them as simple Closed Ways first, run the tool, and then re-incorporate them into the relation.
+* **UI Stability:** Version 1.2.2 addresses an intermittent JOSM "ghosting" bug where the cursor would remain attached to a red selection line after drawing the sample box. 
 * **Automation:** Exploring the potential for basic computer-vision assisted counting (though human verification remains a priority to avoid "node bombing").
-* **UI Improvements:** Moving from JOSM prompts to a dedicated dockable panel.
 
 If you find a bug or have a suggestion for the mathematical model, please open an **Issue**.
 
