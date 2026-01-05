@@ -1,5 +1,10 @@
 # Release Notes
 
+## [1.2.3] - 2026-01-05
+### Changed
+- **Refined Smart Suggestions:** The script now respects "Silent Mapping" for specialized areas. Suggestions to switch between `scrub` and `wood` only trigger if those specific tags (or `landuse=forest`) are present. This prevents the script from incorrectly suggesting a tag change for surveys performed on `grassland`, `heath`, or `wetland`.
+- **Improved Feedback:** The suggestion dialog now explicitly mentions the Density Class (e.g., "Open", "Dense") to educate the user on FAO terminology.
+
 ## [1.2.2] - 2026-01-04
 ### Fixed
 - **Mouse Event Ghosting:** Resolved a rare but annoying bug where the cursor would remain stuck in "selection mode" (red line following cursor) after releasing the mouse button. Fixed by forcing a UI focus reset (`requestFocusInWindow`) and immediate state clearing in the `mouseReleased` event.
