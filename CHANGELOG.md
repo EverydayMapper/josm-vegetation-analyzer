@@ -1,5 +1,13 @@
 # Release Notes
 
+## [1.2.5] - 2026-01-05
+### Fixed
+- **Cancel Behavior:** In the Smart Suggestion prompt, clicking "Cancel" now correctly aborts the entire script without applying any tags. Previously, it behaved like "No," saving the statistics but not changing the primary tag.
+- **Imagery Enforcement:** The script now checks if a background imagery layer is visible before starting. If no imagery is detected, it displays an error and exits to prevent blind surveys.
+
+### Changed
+- **UI Prompts:** Refined instruction text (capitalized actions like `CLICK+DRAG`) to better guide the user through the mouse interactions.
+
 ## [1.2.4] - 2026-01-05
 ### Fixed
 - **Critical Trackpad Bug:** Fixed the "red line ghosting" issue where the selection tool remained active after drawing the sample box. This was caused by the dialog pop-up blocking the mouse release event. All dialogs in the event loop are now wrapped in `SwingUtilities.invokeLater` to ensure JOSM processes the input cleanly before showing messages.
