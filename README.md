@@ -41,6 +41,8 @@ This is a Python-based script for the **JOSM Scripting Plugin**.
     * **Yes:** Apply new density tags and update the primary tag (e.g., scrub → wood).
     * **No:** Apply density tags but keep the existing primary tag.
     * **Cancel:** Exit the script without making any changes.
+  
+**Note on Accuracy:** When drawing the sample box, the script "snaps" the corners to the nearest 0.5 meters. To ensure consistency for density calculations, the area is calculated simply as `Width * Height` (e.g., 100m * 60m = 6000m²). This overrides minor geodesic discrepancies inherent to map projections, ensuring the math matches the visual labels.
 
 ## Tagging Applied
 
