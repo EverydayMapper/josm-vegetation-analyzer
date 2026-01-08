@@ -41,40 +41,8 @@ This is a Python-based script for the **JOSM Scripting Plugin**.
     * **Yes:** Apply new density tags and update the primary tag (e.g., scrub → wood).
     * **No:** Apply density tags but keep the existing primary tag.
     * **Cancel:** Exit the script without making any changes.
-  
-**Note on Accuracy:** When drawing the sample box, the script "snaps" the corners to the nearest 0.5 meters. To ensure consistency for density calculations, the area is calculated simply as `Width * Height` (e.g., 100m * 60m = 6000m²). This overrides minor geodesic discrepancies inherent to map projections, ensuring the math matches the visual labels.
 
-## Usage Instructions (v1.4.4)
-
-### 1. Preparation
-- Select a single polygon (`natural=wood`, `natural=scrub`, or `landuse=forest`).
-- Ensure you have an imagery layer active.
-- Run the script.
-
-### 2. Setup & Metadata
-- **Imagery Date:** Enter the date of the satellite imagery used (e.g., `2024-06-15`).
-- **Vegetation Type:** Choose between **Trees**, **Bushes**, or **Heathland Plants**.
-  - *Tip: The script now uses appropriate visual markers (`natural=tree` vs `natural=shrub`) based on this choice.*
-
-### 3. Calibration (The Sample Box)
-- **Draw the Box:** Click and drag to create a representative sample area. The script will snap the dimensions to the nearest 0.5m.
-- **Measure Diameters:** Draw lines across a few crowns/shrubs to calibrate the average size. 
-- **Confirm:** Press `ENTER` to lock in the calibration and move to counting.
-
-### 4. Counting Phase
-- **SHIFT + Click** every tree/shrub inside the box.
-- Use `BACKSPACE` or `DELETE` to undo the last point if you misclick.
-- **Visuals:** You will see small green markers identifying each counted item.
-- Press `ENTER` when finished.
-
-### 5. Smart Suggestions & Logging
-- **Smart Tags:** If the calculated density contradicts the current tagging (e.g., a "wood" that is actually "scattered scrub"), the script will suggest a tag update.
-- **Save Log:** Choose `YES` when prompted to save a detailed `TreeSurvey_{ID}_{Time}.txt` file. This log serves as your proof of survey and includes:
-    - Original object tags (Surveyed Type)
-    - Calculated canopy percentage and stem count
-    - Detailed coordinates of every point counted for audit purposes.
-
-## How to Use (v1.4.4)
+## How to Use
 
 1. **Select:** Highlight a **closed way** or a **multipolygon relation** representing the area to be analyzed (e.g., `natural=wood` or `natural=scrub`).
 2. **Setup:** Ensure a background imagery layer (Bing, Esri, etc.) is visible and execute the script from the JOSM Scripting Console.
@@ -92,6 +60,8 @@ This is a Python-based script for the **JOSM Scripting Plugin**.
     - **No:** Apply density tags (canopy %, etc.) but keep the existing primary tag.
     - **Cancel:** Exit the script without making any changes to the OSM object.
 7. **Log:** Choose **Yes** to export the `TreeSurvey_{ID}_{Time}.txt` log. This file records the **Surveyed Type** (original tags), imagery source, and the exact coordinates of every item counted for audit purposes.
+
+**Note on Accuracy:** When drawing the sample box, the script "snaps" the corners to the nearest 0.5 meters. To ensure consistency for density calculations, the area is calculated simply as `Width * Height` (e.g., 100m * 60m = 6000m²). This overrides minor geodesic discrepancies inherent to map projections, ensuring the math matches the visual labels.
 
 ## Tagging Applied
 
