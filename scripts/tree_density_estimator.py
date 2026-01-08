@@ -1,36 +1,43 @@
 # ==============================================================================
 # Tree Density Estimator
-# Version: 1.2.6
-# Date: 2026-01-05
+# Version: 1.4.4
+# Date: 2026-01-08
 # Author: EverydayMapper (OSM)
 # License: MIT
 # 
-# NEW IN V1.2.6:
-# - CRITICAL FIX: Removed the invalid 'getHelpText()' call that caused a crash
-#   when exiting or finishing the script. The status line is now cleared 
-#   unconditionally.
-# - RETAINED: All logic for Smart Suggestions, Cancel-to-Abort, and Imagery checks.
+# UPDATE v1.4.4:
+# - VISUALIZATION: Counting markers now use natural=shrub for Bushes/Plants
+#   instead of defaulting to natural=tree.
+# - LOGGING: Updated script version in headers.
 # ==============================================================================
 
 import math
+import time
+import os
 from threading import Thread
+from java.awt.event import MouseListener, MouseMotionListener, KeyListener
+from java.awt.geom import Path2D 
+from javax.swing import JOptionPane, SwingUtilities, JFileChooser
 from org.openstreetmap.josm.gui import MainApplication
 from org.openstreetmap.josm.data.osm import Node, Way
 from org.openstreetmap.josm.tools import Geometry
 from org.openstreetmap.josm.data.coor import LatLon
 from org.openstreetmap.josm.gui.layer import OsmDataLayer
-from java.awt.event import MouseListener, KeyListener
-from java.awt.geom import Path2D 
-from javax.swing import JOptionPane, SwingUtilities
+
+def project_point(start_lat, start_lon, dist_m, bearing_rad):
+    R = 6378137.0 
+    lat1 = math.radians(start_lat)
+    lon1 = math.radians(start_lon)
+    lat2 = math.asin(math.sin(lat1) * math.cos(dist_m / R) +
+                     math.cos(lat1) * math.sin(dist_m / R) * math.cos(bearing_rad))
+    lon2 = lon1 + math.atan2(math.sin(bearing_rad) * math.sin(dist_m / R) * math.cos(lat1),
+                             math.cos(dist_m / R) - math.sin(lat1) * math.sin(lat2))
+    return math.degrees(lat2), math.degrees(lon2)
+
+def round_to_half(value):
+    return round(value * 2) / 2.0
 
 def run_analyzer():
-    # 1. Start with Disclaimer
-    disclaimer = ("PRECISION & SOURCE NOTICE:\n"
-                  "- Best for 'Open' or 'Scattered' vegetation.\n"
-                  "- SHIFT+CLICK to count (prevents accidental selection).\n"
-                  "- Please verify imagery dates for accuracy!")
-    JOptionPane.showMessageDialog(None, disclaimer, "Tool Disclaimer", JOptionPane.WARNING_MESSAGE)
-
     layer = MainApplication.getLayerManager().getEditLayer()
     if not layer or not layer.data: return
     selection = layer.data.getSelected()
@@ -39,224 +46,236 @@ def run_analyzer():
         return
     
     target = selection.iterator().next()
-    try:
-        total_area = abs(Geometry.computeArea(target))
-    except:
-        JOptionPane.showMessageDialog(None, "Invalid area geometry.")
-        return
+    total_area = abs(Geometry.computeArea(target))
+    target_id = target.getId()
+    target_type = "Way" if isinstance(target, Way) else "Relation"
 
-    # 2. Metadata & Imagery Source Check
     active_layer_name = None
     for l in MainApplication.getLayerManager().getLayers():
         if isinstance(l, OsmDataLayer): continue
-        if l.isVisible():
-            active_layer_name = l.getName()
+        if l.isVisible(): active_layer_name = l.getName()
             
-    # Enforce Imagery Presence
-    if not active_layer_name:
-        JOptionPane.showMessageDialog(None, 
-            "No active imagery layer found.\n\nPlease enable a background imagery layer (e.g., Bing, Esri)\nto conduct the survey.",
-            "Imagery Missing", JOptionPane.ERROR_MESSAGE)
-        return
-
-    date_prompt_msg = ("Date of Imagery (Optional)\n\n"
-                       "Enter the capture date (YYYY-MM-DD) if known.\n"
-                       "Leave blank if unknown.\n\n"
-                       "Click OK to continue or Cancel to exit script.")
-    
-    img_date = JOptionPane.showInputDialog(None, date_prompt_msg, 
-                                           "Imagery Metadata", JOptionPane.QUESTION_MESSAGE)
-    
+    img_date = JOptionPane.showInputDialog(None, "Imagery Date (YYYY-MM-DD):", "Metadata", JOptionPane.QUESTION_MESSAGE)
     if img_date is None: return
-    
-    if img_date and img_date.strip():
-        imagery_source = "{} ({}); tree_density_estimator".format(active_layer_name, img_date.strip())
-    else:
-        imagery_source = "{}; tree_density_estimator".format(active_layer_name)
+    clean_date = img_date.strip() if img_date else "Unknown Date"
+    source_tag_val = "{} ({}); tree_density_estimator".format(active_layer_name, clean_date) if img_date else "{}; tree_density_estimator".format(active_layer_name)
 
     options = ["Trees", "Bushes", "Heathland Plants"]
-    choice = JOptionPane.showOptionDialog(None, "What are you counting?", "Vegetation Type",
-                                          JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE,
-                                          None, options, options[0])
+    choice = JOptionPane.showOptionDialog(None, "What are you counting?", "Vegetation Type", 0, JOptionPane.QUESTION_MESSAGE, None, options, options[0])
     if choice == -1: return
-    singular, plural, tag_suffix = ("Tree", "Trees", "crown") if choice == 0 else ("Bush", "Bushes", "shrub") if choice == 1 else ("Plant", "Plants", "shrub")
+    
+    # Determine singular name, tag suffix, and now the visual marker type
+    singular, tag_suffix = ("Tree", "crown") if choice == 0 else ("Bush", "shrub") if choice == 1 else ("Plant", "shrub")
+    marker_natural = "tree" if choice == 0 else "shrub"
 
-    class PrecisionSampler(MouseListener, KeyListener):
+    class PrecisionSampler(MouseListener, MouseMotionListener, KeyListener):
         def __init__(self):
             self.step = "DRAW_BOX"
             self.start_p = None
             self.sample_way = None
-            self.sample_poly = None
-            self.diameters = []
+            self.sample_nodes = [] 
+            self.label_node = None 
             self.temp_lines = [] 
-            self.tree_nodes = []
+            self.tree_nodes = [] 
+            self.sample_poly = None
             self.finished = False
-            self.sample_area_sqm = 0
-            self.avg_diameter = 0
+            self.sample_area_sqm = 0.0
+            self.avg_diameter = 0.0
+            self.diameters = []
+            self.log_box_dims = (0.0, 0.0) 
+            self.log_calibration_data = [] 
 
         def update_status(self, message):
-            area_info = "| Area: {:.1f}m2 ".format(self.sample_area_sqm) if self.sample_area_sqm > 0 else ""
-            MainApplication.getMap().statusLine.setHelpText("[Analyzer] " + area_info + "| " + message)
+            MainApplication.getMap().statusLine.setHelpText("[v1.4.4] " + message)
+
+        def get_label_node(self, latlon, text):
+            if self.label_node is None:
+                self.label_node = Node(latlon); self.label_node.put("name", text); self.label_node.put("place", "point") 
+                layer.data.addPrimitive(self.label_node)
+            else: self.label_node.setCoor(latlon); self.label_node.put("name", text)
+            return self.label_node
 
         def mousePressed(self, e):
+            if not e.isShiftDown():
+                mv = MainApplication.getMap().mapView
+                self.start_p = mv.getLatLon(e.getX(), e.getY())
+                if self.step == "DRAW_BOX":
+                    n1=Node(self.start_p); n2=Node(self.start_p); n3=Node(self.start_p); n4=Node(self.start_p)
+                    w = Way(); w.setNodes([n1, n2, n3, n4, n1])
+                    self.sample_nodes = [n1, n2, n3, n4]; self.sample_way = w
+                    for n in self.sample_nodes: layer.data.addPrimitive(n)
+                    layer.data.addPrimitive(w)
+
+        def mouseDragged(self, e):
             mv = MainApplication.getMap().mapView
-            if not e.isShiftDown(): self.start_p = mv.getLatLon(e.getX(), e.getY())
+            curr_p = mv.getLatLon(e.getX(), e.getY())
+            if self.step == "DRAW_BOX" and self.start_p and self.sample_way:
+                w_dist = round_to_half(self.start_p.greatCircleDistance(LatLon(self.start_p.lat(), curr_p.lon())))
+                h_dist = round_to_half(self.start_p.greatCircleDistance(LatLon(curr_p.lat(), self.start_p.lon())))
+                self.sample_nodes[1].setCoor(LatLon(self.start_p.lat(), curr_p.lon()))
+                self.sample_nodes[2].setCoor(curr_p)
+                self.sample_nodes[3].setCoor(LatLon(curr_p.lat(), self.start_p.lon()))
+                txt = "{:.1f}m x {:.1f}m".format(w_dist, h_dist)
+                self.get_label_node(curr_p, txt); self.update_status("Drawing Sample Box: " + txt); layer.invalidate() 
+            elif self.step == "CALIBRATE" and self.start_p:
+                dist = self.start_p.greatCircleDistance(curr_p)
+                self.update_status("Measuring Diameter: {:.1f}m".format(dist))
 
         def mouseReleased(self, e):
             mv = MainApplication.getMap().mapView
             if not self.start_p: return
-            end_p = mv.getLatLon(e.getX(), e.getY())
-            
-            p1 = self.start_p
-            self.start_p = None
-            
-            # Use 'invokeLater' to let JOSM finish the mouse event before blocking with a dialog
+            end_p = mv.getLatLon(e.getX(), e.getY()); p1 = self.start_p; self.start_p = None
             def process_release():
                 mv.requestFocusInWindow()
-                
                 if self.step == "DRAW_BOX":
-                    dist = p1.greatCircleDistance(end_p)
-                    if dist < 1.0: return 
-                    n1 = Node(p1); n2 = Node(LatLon(p1.lat(), end_p.lon()))
-                    n3 = Node(end_p); n4 = Node(LatLon(end_p.lat(), p1.lon()))
-                    self.sample_way = Way()
-                    self.sample_way.setNodes([n1, n2, n3, n4, n1])
-                    layer.data.addPrimitive(n1); layer.data.addPrimitive(n2); layer.data.addPrimitive(n3); layer.data.addPrimitive(n4); layer.data.addPrimitive(self.sample_way)
-                    self.sample_area_sqm = abs(Geometry.computeArea(self.sample_way))
-                    poly = Path2D.Double()
-                    poly.moveTo(n1.coor.lat(), n1.coor.lon()); poly.lineTo(n2.coor.lat(), n2.coor.lon()); poly.lineTo(n3.coor.lat(), n3.coor.lon()); poly.lineTo(n4.coor.lat(), n4.coor.lon()); poly.closePath()
-                    self.sample_poly = poly
-                    
-                    msg = ("Sample Area: {:.1f} m2\n\n"
-                           "CALIBRATION STEP:\n"
-                           "CLICK+DRAG your mouse from one side of a {} to the other to measure its diameter.\n"
-                           "Measure 3-5 different ones for a better average, then press ENTER.").format(self.sample_area_sqm, singular)
-                    
-                    JOptionPane.showMessageDialog(None, msg)
-                    self.step = "CALIBRATE"
-                    self.update_status("CLICK+DRAG across a {} crown, then ENTER.".format(singular))
-
+                    start_lat = self.sample_nodes[0].coor.lat(); start_lon = self.sample_nodes[0].coor.lon()
+                    w_raw = self.sample_nodes[0].coor.greatCircleDistance(LatLon(start_lat, end_p.lon()))
+                    h_raw = self.sample_nodes[0].coor.greatCircleDistance(LatLon(end_p.lat(), start_lon))
+                    final_w = round_to_half(w_raw); final_h = round_to_half(h_raw)
+                    self.sample_area_sqm = final_w * final_h
+                    self.log_box_dims = (final_w, final_h)
+                    b_w = math.radians(90) if end_p.lon() > start_lon else math.radians(270)
+                    b_h = math.radians(180) if end_p.lat() < start_lat else math.radians(0)
+                    l2, o2 = project_point(start_lat, start_lon, final_w, b_w); self.sample_nodes[1].setCoor(LatLon(l2, o2))
+                    l4, o4 = project_point(start_lat, start_lon, final_h, b_h); self.sample_nodes[3].setCoor(LatLon(l4, o4))
+                    l3, o3 = project_point(l4, o4, final_w, b_w); self.sample_nodes[2].setCoor(LatLon(l3, o3))
+                    poly = Path2D.Double(); nodes = self.sample_way.getNodes(); poly.moveTo(nodes[0].coor.lat(), nodes[0].coor.lon())
+                    for i in range(1, 4): poly.lineTo(nodes[i].coor.lat(), nodes[i].coor.lon())
+                    poly.closePath(); self.sample_poly = poly; self.step = "CALIBRATE"
+                    JOptionPane.showMessageDialog(None, "Box: {:.1f}m x {:.1f}m ({:.1f} m2).\nNext: Measure {} diameters.".format(final_w, final_h, self.sample_area_sqm, singular))
                 elif self.step == "CALIBRATE":
                     dist = p1.greatCircleDistance(end_p)
                     if dist > 0.05:
-                        self.diameters.append(dist)
-                        self.avg_diameter = sum(self.diameters) / len(self.diameters)
-                        self.update_status("Last: {:.2f}m | Avg: {:.2f}m (n={}) | ENTER".format(dist, self.avg_diameter, len(self.diameters)))
-                        l1 = Node(p1); l2 = Node(end_p); line = Way(); line.setNodes([l1, l2])
-                        layer.data.addPrimitive(l1); layer.data.addPrimitive(l2); layer.data.addPrimitive(line)
-                        self.temp_lines.append((line, l1, l2))
-
+                        self.diameters.append(dist); self.log_calibration_data.append((p1.lat(), p1.lon(), end_p.lat(), end_p.lon(), dist))
+                        l1=Node(p1); l2=Node(end_p); line=Way(); line.setNodes([l1, l2]); lbl=Node(end_p); lbl.put("name", "{:.1f}m".format(dist)); lbl.put("place", "point")
+                        layer.data.addPrimitive(l1); layer.data.addPrimitive(l2); layer.data.addPrimitive(line); layer.data.addPrimitive(lbl); self.temp_lines.append((line, l1, l2, lbl))
+                        self.update_status("Avg: {:.1f}m (n={}) | ENTER to start counting.".format(sum(self.diameters)/len(self.diameters), len(self.diameters))); layer.invalidate()
             SwingUtilities.invokeLater(process_release)
 
         def mouseClicked(self, e):
             if self.step == "COUNTING" and e.isShiftDown():
-                mv = MainApplication.getMap().mapView
-                click_ll = mv.getLatLon(e.getX(), e.getY())
-                if self.sample_poly and self.sample_poly.contains(click_ll.lat(), click_ll.lon()):
-                    node = Node(click_ll); layer.data.addPrimitive(node); self.tree_nodes.append(node)
-                    self.update_status("{} Counted: {} | ENTER to finish".format(plural, len(self.tree_nodes)))
+                mv = MainApplication.getMap().mapView; ll = mv.getLatLon(e.getX(), e.getY())
+                if self.sample_poly.contains(ll.lat(), ll.lon()):
+                    # Use the correct marker type (tree or shrub) for visualization
+                    node = Node(ll); node.put("name", str(len(self.tree_nodes)+1)); node.put("natural", marker_natural)
+                    layer.data.addPrimitive(node); self.tree_nodes.append(node)
+                    self.update_status("Count: {} | ENTER to finish".format(len(self.tree_nodes))); layer.invalidate()
 
         def keyPressed(self, e):
             if e.getKeyCode() == 10: 
                 if self.step == "CALIBRATE" and self.diameters:
                     self.avg_diameter = sum(self.diameters) / len(self.diameters)
-                    for line, n1, n2 in self.temp_lines: layer.data.removePrimitive(line); layer.data.removePrimitive(n1); layer.data.removePrimitive(n2)
-                    self.temp_lines = []; self.step = "COUNTING"
-                    self.update_status("SHIFT+CLICK to count {} inside the box.".format(plural))
-                    JOptionPane.showMessageDialog(None, "Calibration Done: {:.2f}m\n\nNow SHIFT+CLICK every {} inside the sample box.".format(self.avg_diameter, singular))
+                    if self.label_node: layer.data.removePrimitive(self.label_node); self.label_node = None
+                    for l, n1, n2, lb in self.temp_lines: layer.data.removePrimitive(l); layer.data.removePrimitive(n1); layer.data.removePrimitive(n2); layer.data.removePrimitive(lb)
+                    self.temp_lines = []; self.step = "COUNTING"; JOptionPane.showMessageDialog(None, "Now SHIFT+CLICK every {} inside the box.".format(singular)); self.update_status("SHIFT+CLICK to count."); layer.invalidate()
                 elif self.step == "COUNTING": self.finished = True
-            elif e.getKeyCode() in [8, 127]: 
-                if self.step == "CALIBRATE" and self.diameters:
-                    self.diameters.pop(); line, n1, n2 = self.temp_lines.pop()
-                    layer.data.removePrimitive(line); layer.data.removePrimitive(n1); layer.data.removePrimitive(n2)
-                elif self.step == "COUNTING" and self.tree_nodes: layer.data.removePrimitive(self.tree_nodes.pop())
+            elif e.getKeyCode() in [8, 127]:
+                if self.step == "COUNTING" and self.tree_nodes: layer.data.removePrimitive(self.tree_nodes.pop()); layer.invalidate()
 
+        def mouseMoved(self, e): pass
         def mouseEntered(self, e): pass
         def mouseExited(self, e): pass
         def keyReleased(self, e): pass
         def keyTyped(self, e): pass
 
-    JOptionPane.showMessageDialog(None, "STEP 1: CLICK+DRAW to create a sample box inside the main area.")
-    tool = PrecisionSampler(); view = MainApplication.getMap().mapView
-    view.addMouseListener(tool); view.addKeyListener(tool); view.requestFocusInWindow()
+    tool = PrecisionSampler(); view = MainApplication.getMap().mapView; view.addMouseListener(tool); view.addMouseMotionListener(tool); view.addKeyListener(tool); view.requestFocusInWindow()
 
     def monitor():
-        import time
         while not tool.finished: time.sleep(0.1)
-        view.removeMouseListener(tool); view.removeKeyListener(tool)
+        view.removeMouseListener(tool); view.removeMouseMotionListener(tool); view.removeKeyListener(tool)
         def finalize():
             layer.data.beginUpdate()
             try:
                 count = len(tool.tree_nodes)
                 if count > 0:
-                    # 1. Calculate Statistics
                     indiv_area = math.pi * ((tool.avg_diameter / 2)**2)
                     density_ratio = float(count) / tool.sample_area_sqm
                     est_total = int(density_ratio * total_area)
                     avg_spacing = math.sqrt(1.0 / density_ratio)
-                    
-                    canopy_pc = int(round(((est_total * indiv_area) / total_area) * 100 / 5.0) * 5)
-                    canopy_pc = max(0, min(100, canopy_pc))
+                    canopy_pc = min(100, int(round(((est_total * indiv_area) / total_area) * 100 / 5.0) * 5))
                     density_class = "very_dense" if canopy_pc >= 70 else "dense" if canopy_pc >= 40 else "open" if canopy_pc >= 10 else "scattered"
                     
-                    # 2. Buffer proposed tags
-                    proposed_tags = {}
-                    proposed_tags["wood:density"] = density_class
-                    proposed_tags["canopy"] = str(canopy_pc) + "%"
-                    proposed_tags["est:stem_count"] = str(est_total)
-                    proposed_tags["est:avg_{}".format(tag_suffix)] = "{:.1f}m".format(tool.avg_diameter)
-                    proposed_tags["est:avg_spacing"] = "{:.1f}m".format(avg_spacing)
-                    proposed_tags["est:source_area"] = str(round(total_area, 1))
-                    proposed_tags["source"] = imagery_source
-                    
-                    current_nat = target.get("natural")
-                    current_land = target.get("landuse")
-                    
-                    # 3. Smart Suggestion Logic
+                    final_tags = {
+                        "wood:density": density_class, "canopy": str(canopy_pc) + "%", "est:stem_count": str(est_total),
+                        "est:avg_{}".format(tag_suffix): "{:.1f}m".format(tool.avg_diameter),
+                        "est:avg_spacing": "{:.1f}m".format(avg_spacing), "est:source_area": str(round(total_area, 1)), "source": source_tag_val
+                    }
+
+                    # --- SMART SUGGESTION LOGIC ---
                     perform_save = True
+                    suggestion_note = "None"
+                    curr_nat = target.get("natural")
+                    curr_land = target.get("landuse")
                     
-                    if density_class in ["dense", "very_dense"] and current_nat == "scrub":
-                        msg = "Density is {}% ({}).\nSuggest changing natural=scrub to natural=wood?\n\nYES: Change tag & Save\nNO: Keep tag & Save\nCANCEL: Exit without saving".format(canopy_pc, density_class)
-                        res = JOptionPane.showConfirmDialog(None, msg, "Smart Suggestion", JOptionPane.YES_NO_CANCEL_OPTION)
-                        if res == JOptionPane.YES_OPTION:
-                            proposed_tags["natural"] = "wood"
-                        elif res == JOptionPane.CANCEL_OPTION or res == -1:
-                            perform_save = False
+                    # Capture Surveyed Type for Metadata Log
+                    surveyed_type_str = "None"
+                    if curr_nat: surveyed_type_str = "natural=" + curr_nat
+                    elif curr_land: surveyed_type_str = "landuse=" + curr_land
 
-                    elif density_class in ["scattered", "open"] and current_nat == "wood" and current_land != "forest":
-                        msg = "Density is {}% ({}).\nSuggest changing natural=wood to natural=scrub?\n\nYES: Change tag & Save\nNO: Keep tag & Save\nCANCEL: Exit without saving".format(canopy_pc, density_class)
+                    if density_class in ["dense", "very_dense"] and curr_nat == "scrub":
+                        msg = "Density is {}% ({}).\nSuggest changing natural=scrub to natural=wood?".format(canopy_pc, density_class)
                         res = JOptionPane.showConfirmDialog(None, msg, "Smart Suggestion", JOptionPane.YES_NO_CANCEL_OPTION)
-                        if res == JOptionPane.YES_OPTION:
-                            proposed_tags["natural"] = "scrub"
-                        elif res == JOptionPane.CANCEL_OPTION or res == -1:
-                            perform_save = False
+                        if res == JOptionPane.YES_OPTION: 
+                            final_tags["natural"] = "wood"
+                            suggestion_note = "Accepted: Changed scrub -> wood"
+                        elif res == JOptionPane.CANCEL_OPTION or res == -1: perform_save = False
                     
-                    # 4. Apply Changes
+                    elif density_class in ["scattered", "open"] and curr_nat == "wood" and curr_land != "forest":
+                        msg = "Density is {}% ({}).\nSuggest changing natural=wood to natural=scrub?".format(canopy_pc, density_class)
+                        res = JOptionPane.showConfirmDialog(None, msg, "Smart Suggestion", JOptionPane.YES_NO_CANCEL_OPTION)
+                        if res == JOptionPane.YES_OPTION: 
+                            final_tags["natural"] = "scrub"
+                            suggestion_note = "Accepted: Changed wood -> scrub"
+                        elif res == JOptionPane.CANCEL_OPTION or res == -1: perform_save = False
+
                     if perform_save:
-                        for k, v in proposed_tags.items():
-                            target.put(k, v)
-                            
-                        summary = ("ANALYSIS COMPLETE\n"
-                                   "-----------------\n"
-                                   "Avg Size: {:.1f}m\n"
-                                   "Avg Spacing: {:.1f}m\n"
-                                   "Est. Total: {}\n"
-                                   "Canopy Cover: {}%").format(tool.avg_diameter, avg_spacing, est_total, canopy_pc)
-                        JOptionPane.showMessageDialog(None, summary)
-                    else:
-                        MainApplication.getMap().statusLine.setHelpText("Density Analysis Cancelled by User.")
+                        for k, v in final_tags.items(): target.put(k, v)
+                        
+                        # LOG GENERATION
+                        import datetime
+                        timestamp_str = str(int(time.time()))
+                        
+                        log = "=========================================================================\n"
+                        log += " TREE DENSITY SURVEY LOG\n"
+                        log += " Script: Tree Density Estimator v1.4.4\n"
+                        log += " Author: EverydayMapper (OSM)\n"
+                        log += "=========================================================================\n\n"
+                        
+                        log += "METADATA\n--------\n"
+                        log += "Survey Date:       {}\n".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                        log += "Imagery Source:    {}\n".format(active_layer_name)
+                        log += "OSM Object ID:     {} ({})\n".format(target_id, target_type)
+                        log += "Surveyed Type:     {}\n".format(surveyed_type_str)
+                        log += "Target Area Size:  {:.1f} m2\n\n".format(total_area)
+                        
+                        log += "SMART SUGGESTIONS\n-----------------\nStatus: {}\n\n".format(suggestion_note)
+                        
+                        log += "RESULTING TAGS\n--------------\n"
+                        for k, v in final_tags.items(): log += "{}: {}\n".format(k, v)
+                        
+                        log += "\nAPPENDIX\n--------\n[1] Sample Box: {:.1f}m x {:.1f}m | {:.1f}m2\n".format(tool.log_box_dims[0], tool.log_box_dims[1], tool.sample_area_sqm)
+                        log += "[2] Calibrations (Diameters):\n"
+                        for i, d in enumerate(tool.log_calibration_data): log += "  #{}: {:.1f}m | ({:.6f},{:.6f})->({:.6f},{:.6f})\n".format(i+1, d[4], d[0], d[1], d[2], d[3])
+                        log += "[3] Tree Counters:\n"
+                        for i, n in enumerate(tool.tree_nodes): log += "  #{}: {:.6f}, {:.6f}\n".format(i+1, n.coor.lat(), n.coor.lon())
 
-                # Cleanup UI elements
+                        summary = "ANALYSIS COMPLETE\n-----------------\nAvg Size: {:.1f}m\nAvg Spacing: {:.1f}m\nEst. Total: {}\nCanopy: {}%".format(tool.avg_diameter, avg_spacing, est_total, canopy_pc)
+                        JOptionPane.showMessageDialog(None, summary)
+
+                        if JOptionPane.showConfirmDialog(None, "Save log to text file?", "Save Log", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION:
+                            fc = JFileChooser(); 
+                            fc.setSelectedFile(java.io.File("TreeSurvey_{}_{}.txt".format(target_id, timestamp_str)))
+                            if fc.showSaveDialog(None) == JFileChooser.APPROVE_OPTION:
+                                with open(fc.getSelectedFile().getAbsolutePath(), 'w') as f: f.write(log)
+
                 for n in tool.tree_nodes: layer.data.removePrimitive(n)
                 if tool.sample_way:
-                    nodes = tool.sample_way.getNodes()
+                    for n in tool.sample_way.getNodes(): layer.data.removePrimitive(n)
                     layer.data.removePrimitive(tool.sample_way)
-                    for n in nodes: layer.data.removePrimitive(n)
-                
-                # FIXED IN V1.2.6: Unconditionally clear status line (no read check)
+                if tool.label_node: layer.data.removePrimitive(tool.label_node)
                 MainApplication.getMap().statusLine.setHelpText("")
-                    
             finally: layer.data.endUpdate(); layer.invalidate()
+        import java.io.File
         SwingUtilities.invokeLater(finalize)
     Thread(target=monitor).start()
 
