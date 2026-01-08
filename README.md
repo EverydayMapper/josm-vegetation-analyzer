@@ -74,6 +74,25 @@ This is a Python-based script for the **JOSM Scripting Plugin**.
     - Calculated canopy percentage and stem count
     - Detailed coordinates of every point counted for audit purposes.
 
+## How to Use (v1.4.4)
+
+1. **Select:** Highlight a **closed way** or a **multipolygon relation** representing the area to be analyzed (e.g., `natural=wood` or `natural=scrub`).
+2. **Setup:** Ensure a background imagery layer (Bing, Esri, etc.) is visible and execute the script from the JOSM Scripting Console.
+3. **Metadata:** - Enter the **Imagery Date** when prompted (YYYY-MM-DD).
+    - Select the **Vegetation Type** (Trees, Bushes, or Heathland). 
+    - *Note: Choosing "Bushes" or "Plants" will automatically use `natural=shrub` markers for the counting phase.*
+4. **Calibrate:** - **CLICK+DRAW** a sample box over a representative section of the area. (Dimensions will snap to the nearest 0.5m).
+    - **CLICK+DRAG** the diameter of several tree crowns or bush widths to establish a high-accuracy average.
+    - Press **Enter** to lock calibration.
+5. **Count:** - **SHIFT+CLICK** all trees/bushes strictly inside the sample box. 
+    - You can use **Backspace/Delete** to remove the last point if you misclick.
+    - Press **Enter** when the sample count is complete.
+6. **Finalize & Smart Suggestions:** Review the calculated results and the Smart Suggestion prompt:
+    - **Yes:** Apply new density tags and update the primary tag (e.g., `natural=scrub` → `natural=wood`) based on canopy cover.
+    - **No:** Apply density tags (canopy %, etc.) but keep the existing primary tag.
+    - **Cancel:** Exit the script without making any changes to the OSM object.
+7. **Log:** Choose **Yes** to export the `TreeSurvey_{ID}_{Time}.txt` log. This file records the **Surveyed Type** (original tags), imagery source, and the exact coordinates of every item counted for audit purposes.
+
 ## Tagging Applied
 
 The tool applies the following tags to the selected object:
