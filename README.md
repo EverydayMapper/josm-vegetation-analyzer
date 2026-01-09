@@ -4,6 +4,10 @@
 **Author:** EverydayMapper  
 **Platform:** macOS 26.2 (Tested), JOSM v19439, Java 21
 
+### Technical Environment (Validated)
+- **Host Runtime:** Java 21.0.8 (macOS Bundled) / Java 17+ (Windows).
+- **Scripting Engine:** Jython Standalone v2.7.4.
+
 ## Overview
 
 The **Tree Density Estimator** is a JOSM script designed to bridge the gap between "Scrub" and "Wood" in OpenStreetMap. Instead of relying on binary choices or solid green fills, this tool allows mappers to provide nuanced data such as canopy percentage, stem counts, and wood density classes based on FAO standards.
@@ -20,13 +24,18 @@ It uses a **sampling and extrapolation** method: measure a small representative 
 * **Multipolygon Support:** Handles complex relations with 'inner' and 'outer' members.
 * **Standardized Output:** Uses FAO Global Forest Resources Assessment classes for `wood:density`.
 
-## Installation & Requirements
+## Installation, Compatibility & Requirements
 
 This is a Python-based script for the **JOSM Scripting Plugin**.
 
 1.  **Install the Scripting Plugin:** Find it in the JOSM Plugin Preferences.
-2.  **Jython Standalone:** Download the Jython standalone jar and point the Scripting Plugin to it in JOSM Preferences.
+2.  **Jython Standalone Engine:** Jython Standalone v2.7.4 (Unified version for macOS & Windows). Download the Jython standalone jar and point the Scripting Plugin to it in JOSM Preferences.
 3.  **Download this Script:** Place `tree_density_estimator.py` in your local scripts folder.
+
+### Software
+- **JOSM:** Version 19277 or newer (Official or Microsoft Store version).
+- **Scripting Plugin:** Must be installed with the **Jython** engine.
+- **Java:** Java 17 or Java 21 recommended.
 
 ## How to Use
 
