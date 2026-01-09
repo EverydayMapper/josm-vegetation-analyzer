@@ -7,7 +7,8 @@
     - macOS (Sequoia 15.x / 26.2) 
     - Windows 11 (Version 24H2)
 - **JOSM Version:** 19277 or newer (Official or Microsoft Store versions)
-- **Java Runtime:** - Java 21 (macOS Bundled)
+- **Java Runtime:**
+    - Java 21 (macOS Bundled)
     - Java 17 or 21 (Windows)
     - *Note: JOSM's internal runtime is sufficient; no system-wide Java PATH setup is required.*
 
