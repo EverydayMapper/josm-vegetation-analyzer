@@ -10,7 +10,7 @@
 - **Java Runtime:**
     - Java 21 (macOS Bundled)
     - Java 17 or 21 (Windows)
-    - *Note: JOSM's internal runtime is sufficient; no system-wide Java PATH setup is required.*
+    - Note: JOSM's internal runtime is sufficient; no system-wide Java PATH setup is required.
 
 ## Dependencies
 This script is a Python-based tool for the JOSM Scripting environment. To run it, you must have two components:
