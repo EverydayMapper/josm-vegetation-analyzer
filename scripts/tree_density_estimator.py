@@ -1,14 +1,13 @@
 # ==============================================================================
 # Tree Density Estimator
-# Version: 1.4.4
-# Date: 2026-01-08
+# Version: 1.4.5
+# Date: 2026-01-09
 # Author: EverydayMapper (OSM)
 # License: MIT
 # 
-# UPDATE v1.4.4:
-# - VISUALIZATION: Counting markers now use natural=shrub for Bushes/Plants
-#   instead of defaulting to natural=tree.
-# - LOGGING: Updated script version in headers.
+# UPDATE v1.4.5:
+# - FIXED: Restored the "Missing Imagery" check. The script now warns the user
+#   if no background imagery layer is detected before starting the survey.
 # ==============================================================================
 
 import math
@@ -50,11 +49,21 @@ def run_analyzer():
     target_id = target.getId()
     target_type = "Way" if isinstance(target, Way) else "Relation"
 
+    # --- IMAGERY DETECTION & CHECK (FIXED v1.4.5) ---
     active_layer_name = None
     for l in MainApplication.getLayerManager().getLayers():
         if isinstance(l, OsmDataLayer): continue
         if l.isVisible(): active_layer_name = l.getName()
-            
+    
+    # If no imagery is found, warn the user
+    if active_layer_name is None:
+        warn_msg = "No active imagery layer detected!\n\nAccurate density estimation requires visible satellite imagery.\nDo you want to proceed anyway?"
+        choice = JOptionPane.showConfirmDialog(None, warn_msg, "Missing Imagery Warning", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE)
+        if choice != JOptionPane.YES_OPTION:
+            return
+        active_layer_name = "Unknown Source"
+    # ------------------------------------------------
+
     img_date = JOptionPane.showInputDialog(None, "Imagery Date (YYYY-MM-DD):", "Metadata", JOptionPane.QUESTION_MESSAGE)
     if img_date is None: return
     clean_date = img_date.strip() if img_date else "Unknown Date"
@@ -64,7 +73,6 @@ def run_analyzer():
     choice = JOptionPane.showOptionDialog(None, "What are you counting?", "Vegetation Type", 0, JOptionPane.QUESTION_MESSAGE, None, options, options[0])
     if choice == -1: return
     
-    # Determine singular name, tag suffix, and now the visual marker type
     singular, tag_suffix = ("Tree", "crown") if choice == 0 else ("Bush", "shrub") if choice == 1 else ("Plant", "shrub")
     marker_natural = "tree" if choice == 0 else "shrub"
 
@@ -86,7 +94,7 @@ def run_analyzer():
             self.log_calibration_data = [] 
 
         def update_status(self, message):
-            MainApplication.getMap().statusLine.setHelpText("[v1.4.4] " + message)
+            MainApplication.getMap().statusLine.setHelpText("[v1.4.5] " + message)
 
         def get_label_node(self, latlon, text):
             if self.label_node is None:
@@ -156,7 +164,6 @@ def run_analyzer():
             if self.step == "COUNTING" and e.isShiftDown():
                 mv = MainApplication.getMap().mapView; ll = mv.getLatLon(e.getX(), e.getY())
                 if self.sample_poly.contains(ll.lat(), ll.lon()):
-                    # Use the correct marker type (tree or shrub) for visualization
                     node = Node(ll); node.put("name", str(len(self.tree_nodes)+1)); node.put("natural", marker_natural)
                     layer.data.addPrimitive(node); self.tree_nodes.append(node)
                     self.update_status("Count: {} | ENTER to finish".format(len(self.tree_nodes))); layer.invalidate()
@@ -207,7 +214,6 @@ def run_analyzer():
                     curr_nat = target.get("natural")
                     curr_land = target.get("landuse")
                     
-                    # Capture Surveyed Type for Metadata Log
                     surveyed_type_str = "None"
                     if curr_nat: surveyed_type_str = "natural=" + curr_nat
                     elif curr_land: surveyed_type_str = "landuse=" + curr_land
@@ -231,13 +237,12 @@ def run_analyzer():
                     if perform_save:
                         for k, v in final_tags.items(): target.put(k, v)
                         
-                        # LOG GENERATION
                         import datetime
                         timestamp_str = str(int(time.time()))
                         
                         log = "=========================================================================\n"
                         log += " TREE DENSITY SURVEY LOG\n"
-                        log += " Script: Tree Density Estimator v1.4.4\n"
+                        log += " Script: Tree Density Estimator v1.4.5\n"
                         log += " Author: EverydayMapper (OSM)\n"
                         log += "=========================================================================\n\n"
                         
