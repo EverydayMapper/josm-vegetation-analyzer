@@ -1,9 +1,9 @@
 # ==============================================================================
 # Tree Density Estimator
 # Version: 1.0.0 (Official Release)
-# Date: 2026-01-09
+# Date: 2026-01-10
 # Author: EverydayMapper (OSM)
-# Repository: https://github.com/EverydayMapper/josm-tree-density-estimator
+# Source: https://github.com/EverydayMapper/josm-tree-density-estimator
 # License: MIT
 #
 # A JOSM script for statistical sampling and extrapolation of vegetation 
@@ -160,7 +160,16 @@ def run_analyzer():
     )
     # Determine which map icon to use during counting (natural=tree vs natural=shrub)
     marker_natural = "tree" if choice == 0 else "shrub"
-
+    
+    # --- 3.5 START INSTRUCTION DIALOG ---
+    # This ensures beginners know exactly what to do with the mouse next.
+    start_msg = (
+        "Ready to begin sampling.\n\n"
+        "ACTION: CLICK+DRAG to create a sample box inside the main area.\n"
+        "Try to choose a spot that represents the average density of the whole polygon."
+    )
+    JOptionPane.showMessageDialog(None, start_msg)
+    
     # --- 4. INTERACTIVE TOOL (STATE MACHINE) ---
     # This class implements Java Event Listeners to handle Mouse/Keyboard on the map canvas.
     class PrecisionSampler(MouseListener, MouseMotionListener, KeyListener):
