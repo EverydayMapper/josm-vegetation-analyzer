@@ -281,8 +281,26 @@ def run_analyzer():
                     
                     # 3. GEOMETRIC SNAP: 
                     # Re-calculate exact corner coordinates based on the rounded meters.
-                    # This ensures the mathematical area matches the visual label perfectly.
+                    # This ensures the mathematical area matches the visual label perfectly.                                                                        
                     self.sample_area_sqm = final_w * final_h
+                    
+                    # --- SAFETY GUARD: PREVENT 0x0m BOX ---
+                    if self.sample_area_sqm < 1.0:
+                        # If user just clicked or barely dragged, cleanup and let them retry
+                        for n in self.sample_way.getNodes():
+                            layer.data.removePrimitive(n)
+                        layer.data.removePrimitive(self.sample_way)
+                        if self.label_node:
+                            layer.data.removePrimitive(self.label_node)
+                            self.label_node = None
+                        
+                        self.sample_way = None
+                        self.sample_nodes = []
+                        layer.invalidate()
+                        JOptionPane.showMessageDialog(None, "Area too small (0x0m). Please drag to create a box.")
+                        return # Exit here, do not transition to CALIBRATE
+                    
+                    # If Valid: Proceed to setup box
                     self.log_box_dims = (final_w, final_h)
                     
                     # Determine Bearings (East/West, North/South)
@@ -310,9 +328,18 @@ def run_analyzer():
                     
                     # Transition State
                     self.step = "CALIBRATE"
-                    JOptionPane.showMessageDialog(None, 
-                        "Box: {:.1f}m x {:.1f}m ({:.1f} m2).\nNext: Measure {} diameters.".format(
-                        final_w, final_h, self.sample_area_sqm, singular))
+                    
+                    # --- HELP DIALOG ---
+                    help_msg = (
+                        "Box: {:.1f}m x {:.1f}m ({:.1f} m2).\n"
+                        "Next: Measure average {} diameter.\n\n"
+                        "INSTRUCTIONS:\n"
+                        "1. CLICK+DRAG from one edge of a {} to the other.\n"
+                        "2. Repeat a few times to improve accuracy.\n"
+                        "3. Press DELETE to undo last measurement."
+                    ).format(final_w, final_h, self.sample_area_sqm, singular, singular)
+                    
+                    JOptionPane.showMessageDialog(None, help_msg)
                         
                 elif self.step == "CALIBRATE":
                     # --- DIAMETER MEASUREMENT LOGIC ---
@@ -510,6 +537,7 @@ def run_analyzer():
                         log += " TREE DENSITY SURVEY LOG\n"
                         log += " Script: Tree Density Estimator v{}\n".format(VERSION)
                         log += " Author: EverydayMapper (OSM)\n"
+                        log += " Source: https://github.com/EverydayMapper/josm-tree-density-estimator\n"
                         log += "=========================================================================\n\n"
                         log += "METADATA\n--------\n"
                         log += "Survey Date:       {}\n".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
