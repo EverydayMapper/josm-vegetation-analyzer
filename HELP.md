@@ -6,7 +6,7 @@
 - **Verified OS:**
     - macOS (Sequoia 15.x / 26.2) 
     - Windows 11 (Version 24H2)
-- **JOSM Version:** 19277 or newer (Official or Microsoft Store versions)
+- **JOSM Version:** v19439 or newer
 - **Java Runtime:**
     - Java 21 (macOS Bundled)
     - Java 17 or 21 (Windows)
