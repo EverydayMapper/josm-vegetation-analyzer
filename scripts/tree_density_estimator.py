@@ -516,7 +516,14 @@ def run_analyzer():
 
                     # Suggest: Scrub -> Wood?
                     if density_class in ["dense", "very_dense"] and curr_nat == "scrub":
-                        msg = "Density is {}% ({}).\nSuggest changing natural=scrub to natural=wood?".format(canopy_pc, density_class)
+                        msg = (
+                            "Density is {}% ({}).\n"
+                            "Suggest changing natural=scrub to natural=wood?\n\n"
+                            "YES: Change tag & Save\n"
+                            "NO: Keep tag & Save\n"
+                            "CANCEL: Exit without saving"
+                        ).format(canopy_pc, density_class)
+                        
                         res = JOptionPane.showConfirmDialog(None, msg, "Smart Suggestion", JOptionPane.YES_NO_CANCEL_OPTION)
                         if res == JOptionPane.YES_OPTION:
                             final_tags["natural"] = "wood"
@@ -526,7 +533,14 @@ def run_analyzer():
 
                     # Suggest: Wood -> Scrub?
                     elif density_class in ["scattered", "open"] and curr_nat == "wood" and curr_land != "forest":
-                        msg = "Density is {}% ({}).\nSuggest changing natural=wood to natural=scrub?".format(canopy_pc, density_class)
+                        msg = (
+                            "Density is {}% ({}).\n"
+                            "Suggest changing natural=wood to natural=scrub?\n\n"
+                            "YES: Change tag & Save\n"
+                            "NO: Keep tag & Save\n"
+                            "CANCEL: Exit without saving"
+                        ).format(canopy_pc, density_class)
+                        
                         res = JOptionPane.showConfirmDialog(None, msg, "Smart Suggestion", JOptionPane.YES_NO_CANCEL_OPTION)
                         if res == JOptionPane.YES_OPTION:
                             final_tags["natural"] = "scrub"
