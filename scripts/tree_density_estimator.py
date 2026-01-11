@@ -205,7 +205,7 @@ def run_analyzer():
             if self.label_node is None:
                 self.label_node = Node(latlon)
                 self.label_node.put("name", text)
-                self.label_node.put("place", "point") # Force rendering in standard styles
+                # self.label_node.put("place", "point") # Force rendering in standard styles
                 layer.data.addPrimitive(self.label_node)
             else:
                 self.label_node.setCoor(latlon)
@@ -357,12 +357,18 @@ def run_analyzer():
                         self.log_calibration_data.append((p1.lat(), p1.lon(), end_p.lat(), end_p.lon(), dist))
                         
                         # Draw temporary measurement line
-                        l1 = Node(p1); l2 = Node(end_p)
-                        line = Way(); line.setNodes([l1, l2])
-                        lbl = Node(end_p); lbl.put("name", "{:.1f}m".format(dist)); lbl.put("place", "point")
+                        l1 = Node(p1)
+                        l2 = Node(end_p)
+                        line = Way()
+                        line.setNodes([l1, l2])
+                        lbl = Node(end_p)
+                        lbl.put("name", "{:.1f}m".format(dist))
+                        # lbl.put("place", "point")
                         
-                        layer.data.addPrimitive(l1); layer.data.addPrimitive(l2)
-                        layer.data.addPrimitive(line); layer.data.addPrimitive(lbl)
+                        layer.data.addPrimitive(l1)
+                        layer.data.addPrimitive(l2)
+                        layer.data.addPrimitive(line)
+                        layer.data.addPrimitive(lbl)
                         self.temp_lines.append((line, l1, l2, lbl))
                         
                         avg = sum(self.diameters) / len(self.diameters)
@@ -400,8 +406,10 @@ def run_analyzer():
                         layer.data.removePrimitive(self.label_node)
                         self.label_node = None
                     for l, n1, n2, lb in self.temp_lines:
-                        layer.data.removePrimitive(l); layer.data.removePrimitive(n1)
-                        layer.data.removePrimitive(n2); layer.data.removePrimitive(lb)
+                        layer.data.removePrimitive(l)
+                        layer.data.removePrimitive(n1)
+                        layer.data.removePrimitive(n2)
+                        layer.data.removePrimitive(lb)
                     self.temp_lines = []
                     
                     self.step = "COUNTING"
